@@ -18,12 +18,17 @@ import { MAX_PLAYERS, REMOVED, STAR, uid, gridSum, defaultName } from "./domain.
 import { errorMessage } from "./util.js";
 
 // Closest JS equivalent to Ctrl+F5, triggered by clicking the build version
-// in the footer: clears any Cache Storage entries (defensive -- there's no
-// service worker today, but costs nothing to guard against one appearing
-// later) and navigates to a cache-busted URL, which forces the browser to
-// refetch the HTML/JS/CSS from the server instead of serving them from its
-// HTTP cache. Meant for right after a redeploy, and doubles as a reload
-// button for mobile browsers, which have no Ctrl+F5 shortcut at all.
+// in the footer. A plain cache-busted navigation only forces a refetch of
+// the HTML document itself -- the JS/CSS it references keep their own
+// unchanged URLs, so the browser is free to serve them straight out of its
+// 1-day HTTP cache (see main.py's frontend_cache_headers). To actually
+// bypass that, ask the backend which paths it long-caches and re-fetch each
+// with cache: "reload" (bypasses the cache for the request, then updates it
+// with the fresh response) before navigating. Also clears any Cache Storage
+// entries (defensive -- there's no service worker today, but costs nothing
+// to guard against one appearing later). Meant for right after a redeploy,
+// and doubles as a reload button for mobile browsers, which have no
+// Ctrl+F5 shortcut at all.
 async function forceRefresh() {
   if (window.caches) {
     try {
@@ -32,6 +37,15 @@ async function forceRefresh() {
     } catch (e) {
       console.warn("Failed to clear Cache Storage", e);
     }
+  }
+  try {
+    const res = await fetch("/api/asset-manifest", { cache: "no-store" });
+    if (res.ok) {
+      const paths = await res.json();
+      await Promise.all(paths.map((p) => fetch(`/${p}`, { cache: "reload" }).catch(() => {})));
+    }
+  } catch (e) {
+    console.warn("Failed to refresh cached assets", e);
   }
   const url = new URL(window.location.href);
   url.searchParams.set("_", Date.now().toString());

@@ -47,8 +47,11 @@ app.include_router(vision.router, prefix="/api/vision", tags=["vision"])
 # infrequent, so trading up to a day of possible staleness for skipping the
 # round trip on every load is worth it. Staleness resolves itself once the
 # cache expires, or immediately via the frontend's force-refresh footer
-# button (events.js's forceRefresh(), which cache-busts the URL and bypasses
-# this entirely).
+# button: a plain reload can't bypass max-age'd assets the way Ctrl+Shift+R
+# does (only the top-level navigation gets cache-busted, not every <script>/
+# <link> it references), so forceRefresh() asks /api/asset-manifest for
+# every cached path and re-fetches each with cache: "reload" before
+# reloading -- see events.js.
 ASSET_SUFFIXES = (".js", ".css", ".svg", ".png", ".jpg", ".jpeg", ".woff", ".woff2", ".ico")
 ASSET_MAX_AGE = 60 * 60 * 24  # 1 day
 
@@ -61,6 +64,19 @@ async def frontend_cache_headers(request, call_next):
         return response
     response.headers["Cache-Control"] = f"max-age={ASSET_MAX_AGE}" if path.endswith(ASSET_SUFFIXES) else "no-cache"
     return response
+
+
+@app.get("/api/asset-manifest")
+def asset_manifest():
+    """Repo-relative paths of every asset the middleware above long-caches --
+    the force-refresh footer button re-fetches each of these with
+    cache: "reload" so it actually bypasses the browser's HTTP cache instead
+    of just cache-busting the page URL."""
+    return sorted(
+        p.relative_to(FRONTEND_DIR).as_posix()
+        for p in FRONTEND_DIR.rglob("*")
+        if p.is_file() and p.name.endswith(ASSET_SUFFIXES)
+    )
 
 
 # Registered last: routes above take priority over this catch-all, which
