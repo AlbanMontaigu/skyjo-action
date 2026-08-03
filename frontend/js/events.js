@@ -17,6 +17,27 @@ import * as api from "./api.js";
 import { MAX_PLAYERS, REMOVED, STAR, uid, gridSum, defaultName } from "./domain.js";
 import { errorMessage } from "./util.js";
 
+// Closest JS equivalent to Ctrl+F5, triggered by clicking the build version
+// in the footer: clears any Cache Storage entries (defensive -- there's no
+// service worker today, but costs nothing to guard against one appearing
+// later) and navigates to a cache-busted URL, which forces the browser to
+// refetch the HTML/JS/CSS from the server instead of serving them from its
+// HTTP cache. Meant for right after a redeploy, and doubles as a reload
+// button for mobile browsers, which have no Ctrl+F5 shortcut at all.
+async function forceRefresh() {
+  if (window.caches) {
+    try {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+    } catch (e) {
+      console.warn("Failed to clear Cache Storage", e);
+    }
+  }
+  const url = new URL(window.location.href);
+  url.searchParams.set("_", Date.now().toString());
+  window.location.replace(url.toString());
+}
+
 function ensureCalcGrid(playerId) {
   if (!state.calcCards[playerId]) state.calcCards[playerId] = Array(12).fill(null);
 }
@@ -393,6 +414,7 @@ const handlers = {
   // state.js's renderFatal): simplest reliable recovery is a full reload,
   // which re-runs boot() and re-resumes the game from the backend.
   "reload-page": () => location.reload(),
+  "force-refresh": () => forceRefresh(),
 };
 
 function handleAction(action, dataset) {

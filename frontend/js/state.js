@@ -47,6 +47,7 @@ export const state = {
   knownPlayers: [], // roster names from the backend, for the name picker
   hasApiKey: false,
   bootError: "", // set if the initial settings/roster/active-game fetch fails
+  buildVersion: "", // human-readable build date/time from /build.txt (Docker builds only)
 
   // ---- round-in-progress state ----
   draft: {}, // {game_player_id: string} -- scores being entered this round
@@ -138,6 +139,11 @@ export function render() {
         ${state.confirmNewGame ? renderConfirmNewGameModal() : ""}
         ${state.showSettings ? renderSettingsModal() : ""}
         ${state.pickerFor ? renderNamePickerModal() : ""}
+        ${
+          state.buildVersion
+            ? `<button type="button" class="build-footer" data-action="force-refresh" title="Forcer le rechargement de la dernière version">${escapeHtml(state.buildVersion)}</button>`
+            : ""
+        }
       </div></div>
     `;
   } catch (e) {

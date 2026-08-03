@@ -7,9 +7,26 @@ import { state, render, renderFatal } from "./state.js";
 import { bindEvents } from "./events.js";
 import * as api from "./api.js";
 
+// frontend/build.txt reads "dev" in the repo; the Dockerfile overwrites it
+// with the build date/time at image build time (see Dockerfile). Kept out of
+// the Promise.all below and its own try/catch so a network hiccup here never
+// sets bootError -- the footer just stays blank.
+async function loadBuildVersion() {
+  try {
+    const res = await fetch("/build.txt", { cache: "no-store" });
+    if (res.ok) {
+      state.buildVersion = (await res.text()).trim();
+      render();
+    }
+  } catch (e) {
+    console.warn("Failed to load build.txt", e);
+  }
+}
+
 async function boot() {
   bindEvents();
   render();
+  loadBuildVersion();
 
   try {
     const [settings, known, active] = await Promise.all([

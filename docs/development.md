@@ -176,6 +176,11 @@ redéploiement repart d'une base vide -- parties et clé API perdues.
 Sans le volume à l'étape 2, l'app fonctionne mais perd tout son état à chaque
 redéploiement -- c'est la seule chose à ne pas oublier.
 
+`frontend/build.txt` vaut `dev` dans le repo ; le `Dockerfile` l'écrase avec la
+date/heure du build à l'image. Le frontend affiche ce contenu en pied de page
+discret, ce qui permet de distinguer un déploiement Docker (date/heure) d'un
+lancement en local (`dev`).
+
 Ne commite jamais une clé API. Elle se saisit dans l'interface et vit dans
 `backend/data/skyjo.db` (ignoré par git, et donc absent de l'image elle-même —
 voir [photo-scoring.md](photo-scoring.md)).
