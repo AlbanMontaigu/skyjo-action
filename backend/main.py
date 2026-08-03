@@ -7,6 +7,7 @@ vanilla-JS frontend as static files. Run from the repo root with:
     # or: uvicorn backend.main:app --reload
 """
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -18,10 +19,14 @@ from .routers import games, players, settings, vision
 
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    logger.info("Skyjo Action backend started")
     yield
 
 

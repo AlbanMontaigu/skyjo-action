@@ -15,6 +15,7 @@
 import { state, render } from "./state.js";
 import * as api from "./api.js";
 import { MAX_PLAYERS, REMOVED, STAR, uid, gridSum, defaultName } from "./domain.js";
+import { errorMessage } from "./util.js";
 
 function ensureCalcGrid(playerId) {
   if (!state.calcCards[playerId]) state.calcCards[playerId] = Array(12).fill(null);
@@ -55,11 +56,17 @@ function resetRoundForm() {
 }
 
 async function doNewGame() {
+  let endGameFailed = false;
   if (state.gameId) {
     try {
       await api.endGame(state.gameId);
     } catch (e) {
+      // Not fatal: create_game defensively closes any orphaned "playing"
+      // game itself (see games.py), so this can't corrupt the next game --
+      // but the player should still know why, rather than the failure
+      // disappearing into the console.
       console.error(e);
+      endGameFailed = true;
     }
   }
   state.phase = "setup";
@@ -75,6 +82,9 @@ async function doNewGame() {
   state.showRanking = false;
   state.confirmNewGame = false;
   state.showHistory = false;
+  state.setupError = endGameFailed
+    ? "L'ancienne partie n'a pas pu être clôturée côté serveur (ce sera fait automatiquement au prochain lancement)."
+    : "";
   render();
 }
 
@@ -87,7 +97,7 @@ async function startGame() {
     resetRoundForm();
     state.setupError = "";
   } catch (e) {
-    state.setupError = e.message || "Impossible de créer la partie.";
+    state.setupError = errorMessage(e, "Impossible de créer la partie.");
   }
   render();
 }
@@ -99,7 +109,7 @@ async function finalizeRound(closerId) {
     resetRoundForm();
     if (state.gameOver) state.showRanking = true;
   } catch (e) {
-    state.error = e.message || "Impossible d'enregistrer la manche.";
+    state.error = errorMessage(e, "Impossible d'enregistrer la manche.");
     state.showCloserModal = false;
   }
   render();
@@ -112,8 +122,10 @@ async function rematch() {
     state.phase = "playing";
     resetRoundForm();
     state.showRanking = false;
+    state.rematchError = "";
   } catch (e) {
     console.error(e);
+    state.rematchError = errorMessage(e, "Impossible de démarrer la revanche, réessaie.");
   }
   render();
 }
@@ -155,10 +167,13 @@ async function handlePhotoSelected(file, playerId) {
     syncDraft(playerId, grid);
     state.photoReviewFor = playerId;
   } catch (err) {
+    // The backend already differentiates key/network/model-side failures
+    // with a specific French `detail` (see vision.py) -- only 401 needs a
+    // more actionable message here, pointing at the settings icon.
     state.photoError[playerId] =
       err.status === 401
         ? "Clé API invalide ou refusée. Vérifie-la dans les réglages (🔑)."
-        : "Photo illisible, réessaie avec plus de lumière ou complète à la main.";
+        : errorMessage(err, "Photo illisible, réessaie avec plus de lumière ou complète à la main.");
   } finally {
     state.photoLoading[playerId] = false;
     render();
@@ -187,12 +202,14 @@ function closeModal(name) {
 const handlers = {
   "open-ranking": () => {
     state.showRanking = true;
+    state.rematchError = "";
     render();
   },
   "open-settings": () => {
     state.showSettings = true;
     state.settingsValue = "";
     state.settingsVisible = false;
+    state.settingsError = "";
     render();
   },
   "request-new-game": () => {
@@ -342,11 +359,16 @@ const handlers = {
     try {
       const res = await api.saveApiKey(state.settingsValue.trim());
       state.hasApiKey = res.has_api_key;
+      // Only close/clear on success -- on failure the modal used to close
+      // anyway, silently discarding the typed key and leaving the user
+      // thinking it was saved when it wasn't.
+      state.showSettings = false;
+      state.settingsValue = "";
+      state.settingsError = "";
     } catch (e) {
       console.error(e);
+      state.settingsError = errorMessage(e, "Impossible d'enregistrer la clé, réessaie.");
     }
-    state.showSettings = false;
-    state.settingsValue = "";
     render();
   },
   // Deliberately doesn't close the modal, matching the old SettingsModal:
@@ -355,16 +377,22 @@ const handlers = {
     try {
       await api.removeApiKey();
       state.hasApiKey = false;
+      state.settingsValue = "";
+      state.settingsError = "";
     } catch (e) {
       console.error(e);
+      state.settingsError = errorMessage(e, "Impossible de retirer la clé, réessaie.");
     }
-    state.settingsValue = "";
     render();
   },
   "toggle-key-visibility": () => {
     state.settingsVisible = !state.settingsVisible;
     render();
   },
+  // Used by the boot-error banner and the fatal-error fallback screen (see
+  // state.js's renderFatal): simplest reliable recovery is a full reload,
+  // which re-runs boot() and re-resumes the game from the backend.
+  "reload-page": () => location.reload(),
 };
 
 function handleAction(action, dataset) {
@@ -381,7 +409,12 @@ export function bindEvents() {
       handleAction(overlay.dataset.action, overlay.dataset);
       return;
     }
-    const el = e.target.closest("[data-action]");
+    // Exclude [data-overlay] here: it's only meant to close on a direct hit
+    // (handled above). Without this, a click on a plain child with no
+    // data-action of its own (e.g. the settings/picker text inputs) bubbles
+    // straight up to the overlay's data-action="close-modal" and closes the
+    // modal the instant the user taps the input to focus it.
+    const el = e.target.closest("[data-action]:not([data-overlay])");
     if (el) handleAction(el.dataset.action, el.dataset);
   });
 

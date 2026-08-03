@@ -99,11 +99,11 @@ export function renderPhotoSourceModal() {
           <h2 class="podium-title" style="font-size:18px">Photo de la grille</h2>
         </div>
         <div style="display:flex;gap:8px;justify-content:center">
-          <label class="card-btn primary-btn" style="margin-top:0;position:relative">
+          <label class="card-btn primary-btn" style="margin-top:0;position:relative;flex:1;width:auto">
             ${cameraIcon({ size: 16 })} Photo
             <input type="file" accept="image/*" capture="environment" data-action="photo-selected" class="hidden-file-input">
           </label>
-          <label class="card-btn ghost-btn" style="margin-top:0;position:relative">
+          <label class="card-btn ghost-btn" style="margin-top:0;position:relative;flex:1">
             ${imageIcon({ size: 16 })} Galerie
             <input type="file" accept="image/*" data-action="photo-selected" class="hidden-file-input">
           </label>
@@ -191,6 +191,7 @@ export function renderRankingModal() {
         ${
           gameOver
             ? `
+          ${state.rematchError ? `<div class="error-box">${escapeHtml(state.rematchError)}</div>` : ""}
           <div style="display:flex;gap:8px;justify-content:center">
             <button data-action="new-game" class="card-btn ghost-btn" style="margin-top:0">Nouvelle partie</button>
             <button data-action="rematch" class="card-btn primary-btn" style="margin-top:0">Revanche</button>
@@ -278,7 +279,7 @@ export function renderConfirmNewGameModal() {
 }
 
 export function renderSettingsModal() {
-  const { hasApiKey, settingsValue, settingsVisible } = state;
+  const { hasApiKey, settingsValue, settingsVisible, settingsError } = state;
   return `
     <div class="modal-overlay" data-overlay data-action="close-modal" data-modal="settings">
       <div class="modal-card">
@@ -304,9 +305,10 @@ export function renderSettingsModal() {
           >
           <button data-action="toggle-key-visibility" class="card-btn ghost-btn-small">${settingsVisible ? "Cacher" : "Voir"}</button>
         </div>
-        <div style="display:flex;gap:8px;justify-content:center">
-          <button data-action="save-api-key" class="card-btn primary-btn" style="margin-top:0">Enregistrer</button>
-          ${hasApiKey ? `<button data-action="remove-api-key" class="card-btn ghost-btn" style="margin-top:0">Retirer</button>` : ""}
+        ${settingsError ? `<div class="error-box" style="margin-top:10px">${escapeHtml(settingsError)}</div>` : ""}
+        <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+          <button data-action="save-api-key" class="card-btn primary-btn" style="margin-top:0;flex:1">Enregistrer</button>
+          ${hasApiKey ? `<button data-action="remove-api-key" class="card-btn ghost-btn" style="margin-top:0;flex:1">Retirer</button>` : ""}
         </div>
         <p class="hint" style="margin-top:10px">
           Récupère ou crée une clé sur

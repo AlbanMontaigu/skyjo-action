@@ -9,6 +9,7 @@ page.
 
 import base64
 import json
+import logging
 
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile
@@ -16,6 +17,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 from .settings import get_api_key
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 REMOVED = "x"
 STAR = "s"
@@ -136,7 +138,7 @@ def clamp_cell(v):
 async def read_grid(image: UploadFile):
     api_key = get_api_key()
     if not api_key:
-        raise HTTPException(400, "no Anthropic API key configured")
+        raise HTTPException(400, "Aucune clé API Anthropic configurée.")
 
     image_bytes = await image.read()
     b64 = base64.b64encode(image_bytes).decode("ascii")
@@ -177,34 +179,43 @@ async def read_grid(image: UploadFile):
                 },
             )
         except httpx.RequestError as exc:
-            raise HTTPException(502, "Anthropic API unreachable") from exc
+            logger.warning("Anthropic API unreachable: %s", exc)
+            raise HTTPException(502, "Impossible de contacter l'API Anthropic, réessaie dans un instant.") from exc
 
     if response.status_code == 401:
-        raise HTTPException(401, "clé API invalide ou refusée")
+        raise HTTPException(401, "Clé API invalide ou refusée.")
     if not response.is_success:
+        # The raw detail (often English, from Anthropic's own error body) is
+        # only useful for us -- log it, but keep the user-facing message
+        # French and generic per this app's language convention.
         detail = response.text
         try:
             detail = response.json().get("error", {}).get("message", detail)
         except ValueError:
             pass
-        raise HTTPException(502, detail)
+        logger.warning("Anthropic API error %s: %s", response.status_code, detail)
+        raise HTTPException(502, "L'API Anthropic a renvoyé une erreur inattendue.")
 
     data = response.json()
     if data.get("stop_reason") == "refusal":
-        raise HTTPException(422, "photo refusée par le modèle")
+        logger.info("Anthropic vision refused to analyze the photo")
+        raise HTTPException(422, "Le modèle a refusé d'analyser cette photo, réessaie avec une autre.")
 
     text_block = next((b for b in data.get("content", []) if b.get("type") == "text"), None)
     if text_block is None:
-        raise HTTPException(422, "no text in response")
+        logger.warning("Vision response had no text content block: stop_reason=%s", data.get("stop_reason"))
+        raise HTTPException(422, "Réponse inattendue du service de lecture, réessaie.")
 
     try:
         parsed = json.loads(text_block["text"])
-    except (ValueError, KeyError):
-        raise HTTPException(422, "unexpected response shape")
+    except (ValueError, KeyError) as exc:
+        logger.warning("Vision response text wasn't valid JSON: %s", exc)
+        raise HTTPException(422, "Réponse inattendue du service de lecture, réessaie.") from exc
 
     rows = parsed.get("rows") if isinstance(parsed, dict) else None
     if not isinstance(rows, list):
-        raise HTTPException(422, "unexpected response shape")
+        logger.warning("Vision response JSON had no 'rows' list: %r", parsed)
+        raise HTTPException(422, "Réponse inattendue du service de lecture, réessaie.")
 
     grid = [None] * 12
     for r, row in enumerate(rows[:3]):
@@ -216,6 +227,7 @@ async def read_grid(image: UploadFile):
     read_count = sum(1 for v in grid if isinstance(v, int) or v == STAR)
     removed_count = sum(1 for v in grid if v == REMOVED)
     if read_count == 0 and removed_count == 0:
-        raise HTTPException(422, "no valid values detected")
+        logger.info("Vision read-grid found no usable cells")
+        raise HTTPException(422, "Aucune carte reconnue sur la photo, réessaie avec plus de lumière ou complète à la main.")
 
     return {"grid": grid}
