@@ -4,6 +4,14 @@ Ce document décrit ce que l'application calcule. Il ne remplace pas la règle
 officielle de Skyjo : l'app est une feuille de score, elle ne gère ni la pioche,
 ni la défausse, ni le tour de jeu.
 
+Tout ce qui suit (règle du doublement, détection de fin de partie) est
+appliqué **côté serveur**, dans `backend/routers/games.py` (`submit_round()`)
+— c'est la source de vérité, le frontend affiche ce que le backend renvoie et
+ne recalcule rien lui-même. Le calcul du score d'une manche (somme de la
+grille, Étoile, colonne/ligne défaussée) reste côté frontend
+(`frontend/js/domain.js`), puisqu'il ne produit qu'un entier envoyé ensuite au
+backend.
+
 ## Score d'une manche
 
 Le score d'un joueur pour une manche est la **somme des valeurs de ses cartes**
@@ -41,13 +49,15 @@ La règle appliquée :
 > Si le score du joueur qui a terminé la manche n'est **pas strictement le plus
 > bas** de la manche, son score est **doublé**.
 
-En code :
+En code (`backend/routers/games.py`, `submit_round()`) :
 
-```js
-const isStrictlyLowest = players.every(
-  (p) => p.id === closerId || scores[p.id] > closerScore
-);
-if (!isStrictlyLowest) scores[closerId] = closerScore * 2;
+```python
+is_strictly_lowest = all(
+    pid == closer_id or scores[pid] > closer_score for pid in player_ids
+)
+closer_doubled = not is_strictly_lowest
+if closer_doubled:
+    scores[closer_id] = closer_score * 2
 ```
 
 Trois conséquences à connaître :
@@ -64,8 +74,10 @@ Trois conséquences à connaître :
 ## Fin de partie
 
 La partie se termine dès qu'**un joueur atteint 100 points cumulés**
-(`TARGET = 100`, comparaison `>=`). La manche en cours est terminée normalement :
-c'est le total après validation qui déclenche la fin.
+(`target_score = 100`, comparaison `>=`, vérifiée dans `serialize_game()` côté
+backend). La manche en cours est terminée normalement : c'est le total après
+validation qui déclenche la fin, et le backend marque alors la partie
+`finished`.
 
 Le **score le plus bas gagne**. Le classement (`sortedPlayers`) trie par total
 croissant. En cas d'égalité en tête, l'ordre affiché suit l'ordre des joueurs —

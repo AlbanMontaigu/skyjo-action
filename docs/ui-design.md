@@ -50,51 +50,70 @@ classement et des boutons de choix du closer. Un coup d'œil suffit pour savoir
 
 ## Patron de modale
 
-Toutes les modales partagent la même structure :
+Toutes les modales (`frontend/js/modals.js`) partagent la même structure :
 
-```jsx
-<div style={styles.modalOverlay} onClick={onClose}>
-  <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
-    <button style={styles.modalCloseBtn}>×</button>
+```html
+<div class="modal-overlay" data-overlay data-action="close-modal" data-modal="...">
+  <div class="modal-card">
+    <button data-action="close-modal" data-modal="..." class="modal-close-btn">×</button>
     …
   </div>
 </div>
 ```
 
-- `modalOverlay` : plein écran, fond assombri + `backdrop-filter`, ferme au clic.
-- `modalCard` : ancrée en bas (`alignItems: "flex-end"`), coins arrondis en
-  haut seulement, `maxHeight: 88vh` avec défilement interne.
-- `stopPropagation` sur la carte, pour qu'un clic dedans ne ferme pas.
+- `.modal-overlay` : plein écran, fond assombri + `backdrop-filter`, ferme au
+  clic direct dessus.
+- `.modal-card` : ancrée en bas (`align-items: flex-end` sur l'overlay), coins
+  arrondis en haut seulement, `max-height: 88vh` avec défilement interne.
+- Un clic à l'intérieur de la carte ne ferme jamais la modale : le handler
+  délégué (`events.js`) ne déclenche la fermeture que si `e.target` est
+  l'overlay lui-même, jamais un de ses descendants -- l'équivalent du
+  `stopPropagation` de l'ancienne version React, sans avoir à l'écrire
+  explicitement sur chaque carte.
 
-Une exception : `PhotoReviewModal` n'a pas de bouton `×` — cliquer à côté vaut
+Une exception : `PhotoReviewModal` n'a pas de bouton `×` — son overlay déclenche
+`confirm-photo-review` au lieu de `close-modal`, donc cliquer à côté vaut
 « Correct », puisque les données sont déjà appliquées.
 
 ## Grille de cartes
 
 `boardGrid` est une grille CSS `repeat(4, 1fr)` × `repeat(3, 1fr)`, chaque case
-en `aspectRatio: "2 / 3"` — les proportions d'une vraie carte. Les états :
+en `aspect-ratio: 2 / 3` — les proportions d'une vraie carte. Les états :
 
 | État | Rendu |
 | --- | --- |
 | Vide (`null`) | fond translucide, bordure pleine, aucun contenu |
 | Carte | fond `band(v)`, valeur en Baloo 2 gras |
-| Étoile | dégradé arc-en-ciel, `★`, ombre portée sur le texte |
+| Étoile | dégradé arc-en-ciel (`STAR_BG`), `★`, ombre portée sur le texte |
 | Retirée (`REMOVED`) | bordure **en pointillés**, opacité 0,5, `×` |
 
 Le pointillé + la transparence disent « cette position n'existe plus » sans
-casser l'alignement de la grille — les positions restent fixes.
+casser l'alignement de la grille — les positions restent fixes. Le retrait
+s'applique à une colonne (3 cartes) ou une ligne (4 cartes) entière, jamais à
+une seule case — voir `toggle-column`/`toggle-row` dans `events.js`.
+
+Le pavé de saisie (`keypad`, `renderCardValueModal` dans `modals.js`) est en
+`repeat(4, 1fr)` : les 16 valeurs (−2…12 plus l'Étoile) tombent ainsi en quatre
+rangées pleines — −2…Étoile, 1…4, 5…8, 9…12.
 
 ## Styles
 
-Tous les styles vivent dans l'objet `styles` en bas du script, appliqués en
-`style={}`. Le `<style>` du `<head>` ne contient que ce que les styles inline ne
-savent pas exprimer :
+Les styles statiques (couleurs, tailles, espacements constants) vivent dans
+`frontend/css/style.css`, une classe par élément de style de l'ancien objet
+`styles`. Le `<style>` dans le `<head>` de `frontend/index.html` ne contient que
+ce qu'une feuille de classes seule ne sait pas bien exprimer au même endroit :
 
 - `@import` des polices (Baloo 2 pour les titres et les chiffres, Inter pour le
   texte),
 - `@keyframes skyjo-spin` + `.spin` pour le loader de la photo,
 - `.card-btn:active` — le petit enfoncement au tap, qui donne le retour tactile,
-- le reset `box-sizing` et les marges.
+- le reset `box-sizing`, les marges, `button { font-family: inherit }`.
+
+Ce qui dépend de l'état (couleur d'une carte selon sa valeur via `band()`,
+couleur d'un joueur via `playerColor()`, visibilité conditionnelle) reste en
+`style="..."` inline dans les templates de `views/`, `modals.js` -- même
+répartition statique/dynamique que l'ancienne version, juste que la partie
+statique est maintenant dans un fichier `.css` plutôt qu'un objet JS.
 
 Conséquence pratique : **pas de media query, pas de `:hover`**. L'app est pensée
 mobile d'abord, et le `:active` sur `.card-btn` couvre le seul retour visuel qui
